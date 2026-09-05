@@ -1,0 +1,47 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:   # run manually from the Actions tab whenever you want a new build
+  push:
+    branches: [main]
+    paths:             # only rebuild when plugin files actually change
+      - '**.js'
+      - '**.jsx'
+      - '**.html'
+      - '**.css'
+      - 'CSXS/**'
+      - 'ffmpeg-bin/**'
+      - 'build/win-installer.iss'
+      - 'package.json'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "build\win-installer.iss"
+        shell: pwsh
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yashkit-Windows-Installer
+          path: build\dist\Yashkit-Setup-*.exe
+          retention-days: 30

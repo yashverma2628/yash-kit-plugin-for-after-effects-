@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    Content-Security-Policy for the CEP panel (applies in both Premiere & AE).
+    connect-src whitelists the proxy: any HTTPS host (so you never have to
+    re-edit this per deploy) plus localhost/127.0.0.1 for local development.
+    Note: the main STT upload runs through Node/curl, which bypasses CSP — this
+    governs the in-page poll XMLHttpRequest (js/pulse-batch-api.js).
+  -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob: file:;">
+  <title>Yashkit</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<!--
+  Guided flow, condensed to 3 steps:
+    0 · Set up      — language dropdown + caption mode
+    1 · Pick a style — animation styles (AE) / MOGRT styles (Premiere)
+                       + customize text (AE only)
+    2 · Generate     — apply-to, generate, transcript, add to comp
+  One step visible at a time; fixed header + progress dashes + footer nav.
+-->
+
+<body>
+
+  <!-- ── Welcome card ──────────────────────────────────────────
+       Shown once on first install (and again from the header logo).
+       Text comes from the MAKER block in js/main.js. -->
+  <div class="wc-wrap" id="welcomeCard" hidden>
+    <div class="wc-backdrop" id="welcomeBackdrop"></div>
+    <div class="wc" role="dialog" aria-modal="true" aria-labelledby="wcTitle">
+      <button class="wc-x" id="welcomeClose" type="button" aria-label="Close">&#10005;</button>
+
+      <img class="wc-logo" src="icons/yashkit.png?v=2" alt="Yashkit">
+
+      <h2 class="wc-title" id="wcTitle">Thanks for installing Yashkit</h2>
+      <p class="wc-body" id="wcBody"></p>
+
+      <div class="wc-by">
+        <span class="wc-avatar" id="wcAvatar"></span>
+        <span class="wc-by-txt">
+          <span class="wc-by-name" id="wcName"></span>
+          <span class="wc-by-role" id="wcRole"></span>
+        </span>
+      </div>
+
+      <div class="wc-actions">
+        <!-- Both accounts, side by side: the product and the person. -->
+        <div class="wc-follow-row">
+          <button class="wc-follow" id="welcomeFollow" type="button">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+            </svg>
+            <span id="welcomeFollowLabel">yashverma2628</span>
+          </button>
+          <button class="wc-follow" id="welcomeFollow2" type="button" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+              stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <circle cx="12" cy="12" r="4" />
+              <circle cx="17.2" cy="6.8" r="0.6" fill="currentColor" stroke="none" />
+            </svg>
+            <span id="welcomeFollow2Label"></span>
+          </button>
+        </div>
+        <button class="gen wc-start" id="welcomeStart" type="button">
+          <span>Start captioning</span>
+        </button>
+      </div>
+
+      <div class="wc-ver" id="wcVersion"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel">
+
+    <!-- ── Header (fixed) ───────────────────────────────────── -->
+    <div class="hd">
+      <div class="hd-left">
+        <img class="ck-logo" src="icons/yashkit.png?v=2" alt="yashkit">
+        <div class="hd-titles">
+          <h1 class="hd-title">your caption kit!</h1>
+          <h2 class="hd-sub">crafted by yash</h2>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ── Progress dashes (fixed) ──────────────────────────── -->
+    <div class="dashes" id="dashes"><i></i><i></i><i></i></div>
+
+    <!-- ── Step viewport ────────────────────────────────────── -->
+    <div class="steps" id="steps">
+
+      <!-- STEP 0 · Language + caption mode -->
+      <div class="step" data-step="0">
+        <div class="hero">
+          <div class="glyph">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+              stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3Z" />
+            </svg>
+          </div>
+          <h2>Set up your captions</h2>
+          <p>Choose the language and how captions split into layers.</p>
+        </div>
+
+        <div class="ctl">
+          <div class="clab">Language</div>
+          <div class="ddwrap" id="langField">
+            <button class="dd-btn" id="langTrigger" aria-expanded="false" type="button">
+              <span class="flag" id="langFlag">🇺🇸</span>
+              <span class="lab" id="langLab">English</span>
+              <span class="caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg></span>
+            </button>
+            <div class="dd-menu" id="langMenu"><!-- language options injected by main.js --></div>
+          </div>
+        </div>
+        <!-- hidden value store — the generation pipeline reads sourceLanguage.value.
+             Options are generated from the LANGS array in js/main.js so the list
+             can't drift from the menu above it. -->
+        <select id="sourceLanguage" hidden></select>
+
+        <div class="ctl">
+          <div class="clab">Caption Mode</div>
+          <div class="rows" id="modeRows"><!-- mode rows injected by main.js --></div>
+        </div>
+
+        <!-- Words-per-caption slider — only shown while Phrase is selected -->
+        <div class="ctl phrase-ctl" id="phraseSizeControl">
+          <div class="clab phrase-lab">Words per caption <span class="phrase-val" id="phraseSizeVal">4</span></div>
+          <input type="range" id="phraseSize" class="slider" min="1" max="4" step="1" value="4">
+          <div class="slider-ticks"><span>1</span><span>2</span><span>3</span><span>4</span></div>
+        </div>
+        <div class="customize ae-only" id="customizeBlock">
+          <div class="clab customize-lab">Customize text</div>
+
+          <div class="ctl">
+            <div class="clab">Font</div>
+            <div class="ddwrap" id="fontField">
+              <button class="dd-btn" id="fontTrigger" aria-expanded="false" type="button">
+                <span class="lab" id="fontLab">Default</span>
+                <span class="caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg></span>
+              </button>
+              <div class="dd-menu" id="fontMenu">
+                <div class="dd-search-wrap">
+                  <input type="text" id="fontSearch" class="dd-search" placeholder="Search fonts…" spellcheck="false"
+                    autocomplete="off">
+                </div>
+                <div id="fontList"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctl">
+            <div class="clab">Font Size</div>
+            <div class="ctl-row">
+              <div class="stepper">
+                <button id="szDn" type="button" aria-label="Decrease"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                    <path d="M5 12h14" />
+                  </svg></button>
+                <input id="fontSize" type="text" inputmode="numeric" value="60">
+                <span class="un">px</span>
+                <button id="szUp" type="button" aria-label="Increase"><svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctl">
+            <div class="clab">Position</div>
+            <div class="pos-seg" id="posSeg">
+              <button type="button" data-pos="top" aria-selected="false">Top</button>
+              <button type="button" data-pos="center" aria-selected="false">Center</button>
+              <button type="button" data-pos="bottom" aria-selected="true">Bottom</button>
+            </div>
+          </div>
+
+          <!-- Animation Speed + Auto Emoji share a row on wide panels and
+               stack on a docked 380px one (see .ctl-pair in css/style.css). -->
+          <div class="ctl-pair">
+            <div class="ctl">
+              <div class="clab">Animation Speed</div>
+              <div class="pos-seg" id="speedSeg">
+                <button type="button" data-speed="1.5" aria-selected="false">Slow</button>
+                <button type="button" data-speed="1" aria-selected="true">Normal</button>
+                <button type="button" data-speed="0.65" aria-selected="false">Fast</button>
+              </div>
+            </div>
+
+            <div class="ctl">
+              <div class="clab">Auto Emoji</div>
+              <div class="pos-seg" id="emojiSeg">
+                <button type="button" data-emoji="0" aria-selected="true">Off</button>
+                <button type="button" data-emoji="1" aria-selected="false">On</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctl">
+            <div class="clab">Text Color</div>
+            <!-- CEP's embedded Chromium has no native colour dialog, so the
+                 swatch opens an in-panel preset popover instead. Hex entry
+                 still works for any custom colour. -->
+            <div class="hexrow" id="colorField">
+              <span class="sw" id="swFill" style="background:#FFFFFF" title="Pick a color"></span>
+              <input id="hexIn" value="#FFFFFF" spellcheck="false" autocomplete="off">
+              <div class="cp-pop" id="cpPop">
+                <div class="swatches" id="cpSwatches"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Outline: legibility over busy footage. Hidden for Gaming, which
+               supplies its own heavy outline as part of the look. -->
+          <div class="ctl" id="strokeCtl">
+            <div class="clab">Outline</div>
+            <div class="ctl-pair">
+              <div class="pos-seg" id="strokeSeg">
+                <button type="button" data-stroke="off" aria-selected="true">Off</button>
+                <button type="button" data-stroke="thin" aria-selected="false">Thin</button>
+                <button type="button" data-stroke="bold" aria-selected="false">Bold</button>
+              </div>
+              <div class="hexrow" id="strokeColorField">
+                <span class="sw" id="strokeSwFill" style="background:#000000" title="Pick an outline color"></span>
+                <input id="strokeHexIn" value="#000000" spellcheck="false" autocomplete="off">
+                <div class="cp-pop" id="strokeCpPop">
+                  <div class="swatches" id="strokeCpSwatches"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="ctl-note" id="strokeAuto" hidden>Gaming draws its own heavy outline.</div>
+
+
+        </div>
+      </div>
+
+      <!-- STEP 1 · Pick a style (AE: animations · Premiere: MOGRT styles) -->
+      <div class="step" data-step="1">
+        <div class="hero">
+          <div class="glyph">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M5 19 19 5M14 5h5v5" />
+              <path d="M5 9V5h4" opacity=".5" />
+            </svg>
+          </div>
+          <h2>Pick a style</h2>
+          <p id="styleHeroCopy">How should each caption animate onto the screen?</p>
+        </div>
+        <div class="rows ae-only" id="animRows"><!-- animation rows injected by main.js --></div>
+
+        <!-- Premiere: motion first (drives the native keyframed renderer),
+             then the template that supplies the look. Picking a template
+             advances the flow, so motion has to be the row above it. -->
+        <div class="ctl ppro-only" id="pproMotionCtl">
+          <div class="clab">Motion</div>
+          <div class="rows" id="pproMotionRows"><!-- motion rows injected by main.js --></div>
+        </div>
+        <div class="ctl ppro-only">
+          <div class="clab">Caption style</div>
+          <div class="rows" id="mogrtGrid"><!-- bundled .mogrt styles injected by main.js --></div>
+        </div>
+
+        <!-- Customize text (After Effects only — MOGRTs carry their own look) -->
+        <!-- Controls that only exist for particular styles, kept beside the
+             style list that switches them on. Everything style-independent
+             lives in "Customize text" back on step 0. -->
+        <div class="style-opts ae-only" id="styleOpts">
+          <!-- Active-word colour — only for the styles that tint one word at a time. -->
+          <div class="ctl hl-ctl" id="highlightCtl">
+            <div class="clab">Active Word Color</div>
+            <div class="hexrow" id="hlColorField">
+              <span class="sw" id="hlSwFill" style="background:#FFE000" title="Pick a color"></span>
+              <input id="hlHexIn" value="#FFE000" spellcheck="false" autocomplete="off">
+              <div class="cp-pop" id="hlCpPop">
+                <div class="swatches" id="hlCpSwatches"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Font Pair controls — only shown while the Font Pair style is
+               selected. Styles the small intro line (font + colour). -->
+          <div class="pair-ctls" id="pairCtls">
+            <!-- Ready-made pairings: one tap sets both fonts. Only pairings
+                 whose faces are installed appear (built in main.js). -->
+            <div class="ctl" id="pairingRow" hidden>
+              <div class="clab">Pairing</div>
+              <div class="chips" id="pairingChips"></div>
+            </div>
+
+            <div class="ctl">
+              <div class="clab">Pair Font (intro line)</div>
+              <div class="ddwrap" id="pairFontField">
+                <button class="dd-btn" id="pairFontTrigger" aria-expanded="false" type="button">
+                  <span class="lab" id="pairFontLab">Georgia Italic</span>
+                  <span class="caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg></span>
+                </button>
+                <div class="dd-menu" id="pairFontMenu">
+                  <div class="dd-search-wrap">
+                    <input type="text" id="pairFontSearch" class="dd-search" placeholder="Search fonts…"
+                      spellcheck="false" autocomplete="off">
+                  </div>
+                  <div id="pairFontList"></div>
+                </div>
+              </div>
+            </div>
+            <div class="ctl">
+              <div class="clab">Pair Color (intro line)</div>
+              <div class="hexrow" id="pairColorField">
+                <span class="sw" id="pairSwFill" style="background:#FFFFFF" title="Pick a color"></span>
+                <input id="pairHexIn" value="#FFFFFF" spellcheck="false" autocomplete="off">
+                <div class="cp-pop" id="pairCpPop">
+                  <div class="swatches" id="pairCpSwatches"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2 · Generate + transcript + add to comp -->
+      <div class="step" data-step="2">
+        <div class="hero hero-sm">
+          <div class="glyph">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M13.2 2.2 4.6 12.9c-.5.6-.1 1.5.7 1.5H10l-1.4 7.1c-.2.9 1 1.4 1.5.6l8.6-10.7c.5-.6.1-1.5-.7-1.5H13l1.4-7.1c.2-.9-1-1.4-1.5-.6Z" />
+            </svg>
+          </div>
+          <h2>Generate captions</h2>
+          <p>Transcribe your audio, review, then add to your edit.</p>
+        </div>
+
+        <div class="seg" id="scopeSeg">
+          <span class="thumb" id="segThumb"></span>
+          <button type="button" data-scope="selected" aria-selected="true">Selected Clip</button>
+          <button type="button" data-scope="sequence" aria-selected="false">Full Sequence</button>
+        </div>
+
+        <button class="gen" id="btnGenerate" type="button">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M13.2 2.2 4.6 12.9c-.5.6-.1 1.5.7 1.5H10l-1.4 7.1c-.2.9 1 1.4 1.5.6l8.6-10.7c.5-.6.1-1.5-.7-1.5H13l1.4-7.1c.2-.9-1-1.4-1.5-.6Z" />
+          </svg>
+          <span>Generate Captions</span>
+        </button>
+        <div class="prog" id="topProgress">
+          <div class="bar" id="progressFill"></div>
+        </div>
+        <!-- detailed progress label + cancel (functional extra) -->
+        <div class="progdetail" id="progressWrap">
+          <span class="progress-label" id="progressLabel">Connecting…</span>
+          <button class="mini" id="btnCancel" type="button">Cancel</button>
+        </div>
+
+        <!-- One toolbar for everything that acts on the transcript. Translate
+             sits here as a compact pill rather than as its own labelled block:
+             on a docked panel, every row above the transcript is height the
+             transcript doesn't get. Wraps when it runs out of width. -->
+        <div class="tr-actions">
+          <button class="mini" id="btnEdit" aria-pressed="false" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M14.5 5.5l4 4M4 20l1-4L16 5a2.1 2.1 0 0 1 3 3L8 19l-4 1Z" />
+            </svg>
+            <span>Edit</span>
+          </button>
+          <button class="mini" id="btnExportSRT" type="button">
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M8 2v8M4 7l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M2 12v2h12v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+            <span>SRT</span>
+          </button>
+          <button class="mini" id="btnExportVTT" type="button">
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M8 2v8M4 7l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              <path d="M2 12v2h12v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+            <span>VTT</span>
+          </button>
+
+          <!-- Translate to… — hidden until there's a transcript. Timing is
+               untouched: each caption keeps its own in/out, only text changes. -->
+          <div class="ddwrap dd-inline" id="translateField" hidden>
+            <button class="mini mini-dd" id="translateTrigger" aria-expanded="false" type="button">
+              <span class="flag" id="translateFlag">🗣️</span>
+              <span class="lab" id="translateLab">Original</span>
+              <span class="caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg></span>
+            </button>
+            <div class="dd-menu dd-menu-wide" id="translateMenu">
+              <div class="dd-search-wrap">
+                <input type="text" id="translateSearch" class="dd-search" placeholder="Search languages…"
+                  spellcheck="false" autocomplete="off">
+              </div>
+              <div id="translateList"><!-- targets injected by main.js --></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Search filters the lines below; hidden until there's a transcript.
+             Clicking any line moves the host playhead to that caption. -->
+        <div class="tr-search" id="transcriptSearchWrap" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="M16 16l4.5 4.5" />
+          </svg>
+          <input type="text" id="transcriptSearch" placeholder="Search transcript…" spellcheck="false"
+            autocomplete="off">
+          <button class="tr-search-clear" id="transcriptSearchClear" type="button" aria-label="Clear search"
+            hidden>&#10005;</button>
+          <!-- the count lives here, not in the action row above: four pills plus
+               a count won't fit one line at 380px, and this row has the space -->
+          <span class="caption-count" id="captionCount"></span>
+        </div>
+
+        <div class="transcript" id="transcriptBody">
+          <div class="tr-empty" id="transcriptEmpty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+              stroke-linejoin="round">
+              <rect x="9" y="3" width="6" height="11" rx="3" />
+              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+            </svg>
+            <div>No transcript yet.<br>Generate captions to see it here.</div>
+          </div>
+        </div>
+
+        <!-- Which version SRT/VTT export writes. Only appears once a translation
+             exists, since there's nothing to choose before that. -->
+        <div class="ctl export-src" id="exportSrcCtl" hidden>
+          <div class="clab">Export</div>
+          <div class="pos-seg" id="exportSrcSeg">
+            <button type="button" data-src="translated" aria-selected="true">Translated</button>
+            <button type="button" data-src="original" aria-selected="false">Original</button>
+          </div>
+        </div>
+
+        <button class="gen gen-add" id="btnAddToComp" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M12 3 3 8l9 5 9-5-9-5Z" />
+            <path d="M3 13l9 5 9-5" />
+          </svg>
+          <span>Add to Comp</span>
+        </button>
+        <button class="mini regen" id="btnRegen" type="button" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6" />
+          </svg>
+          <span>Regenerate · start over</span>
+        </button>
+
+        <!-- ── Style Tools (AE only) ─────────────────────────────
+             Apply the visual style of one selected "template" text
+             layer to all other caption layers in the comp without
+             overwriting their individual text strings. -->
+        <div class="ck-style-tools ae-only" id="styleTools">
+          <div class="ck-st-divider"></div>
+          <div class="clab">Style Tools</div>
+          <div class="ck-st-options">
+            <label class="ck-st-opt"><input type="checkbox" id="stCopyText" checked><span>Font &amp; Character
+                Styling</span></label>
+            <label class="ck-st-opt"><input type="checkbox" id="stCopyAnimators" checked><span>Text
+                Animators</span></label>
+            <label class="ck-st-opt"><input type="checkbox" id="stCopyEffects" checked><span>Layer
+                Effects</span></label>
+            <label class="ck-st-opt"><input type="checkbox" id="stCopyTransform" checked><span>Transform &amp;
+                Keyframes</span></label>
+          </div>
+          <div class="ck-st-scope">
+            <div class="pos-seg" id="stScopeSeg">
+              <button type="button" data-st-scope="all" aria-selected="true">All Text Layers</button>
+              <button type="button" data-st-scope="selected" aria-selected="false">Selected Only</button>
+            </div>
+          </div>
+          <button class="gen ck-st-btn" id="btnApplyStyle" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+            <span>Apply Style to All</span>
+          </button>
+          <button class="ck-st-fix-btn" id="btnFixCaptions" type="button"
+            style="margin-top:8px;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:500;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.9);cursor:pointer;transition:all 0.15s ease;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span>Fix / Reveal Invisible Captions</span>
+          </button>
+        </div>
+      </div>
+
+
+    </div><!-- .steps -->
+
+    <!-- ── Footer nav (fixed) ───────────────────────────────── -->
+    <div class="nav">
+      <button class="pill" id="backBtn" type="button">
+        <span class="c"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg></span>Back
+      </button>
+      <a class="ig" href="#" id="igLink" title="View Yashkit on GitHub">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+        </svg>
+        <span>GitHub</span>
+      </a>
+      <button class="pill pill-sm" id="skipBtn" type="button">
+        Next<span class="c" style="order:2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg></span>
+      </button>
+    </div>
+
+  </div><!-- .panel -->
+
+  <script src="js/config.js"></script>
+  <script src="js/updater.js"></script>
+  <script src="js/CSInterface.js"></script>
+  <script src="js/font-scanner.js"></script>
+  <script src="js/transliterate.js"></script>
+  <script src="js/llm-cleanup.js"></script>
+  <script src="js/ai-linebreak.js"></script>
+  <script src="js/ai-emphasis.js"></script>
+  <script src="js/ai-emoji.js"></script>
+  <script src="js/ai-translate.js"></script>
+  <script src="js/pulse-batch-api.js"></script>
+  <script src="js/audio-processor.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
+</html>
